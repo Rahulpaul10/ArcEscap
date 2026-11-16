@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: #070a1f;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  min-height: 100dvh;
+  color: #e8f1ff;
+  -webkit-user-select: none;
+  user-select: none;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+  touch-action: manipulation;
+}
+
+@layer utilities {
+  .glass {
+    background: linear-gradient(180deg, rgba(20, 28, 64, 0.62), rgba(10, 15, 40, 0.72));
+    border: 1px solid rgba(172, 198, 233, 0.16);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+  }
+  .safe-top {
+    padding-top: max(14px, env(safe-area-inset-top));
+  }
+  .safe-bottom {
+    padding-bottom: max(76px, calc(env(safe-area-inset-bottom) + 64px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
