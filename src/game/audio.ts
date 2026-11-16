@@ -1,4 +1,4 @@
-type Sfx = 'coin' | 'jump' | 'slide' | 'power' | 'shieldBreak' | 'hit' | 'gameover' | 'milestone' | 'tick' | 'click' | 'smash'
+type Sfx = 'coin' | 'jump' | 'slide' | 'power' | 'shieldBreak' | 'hit' | 'gameover' | 'milestone' | 'tick' | 'click' | 'smash' | 'risk' | 'dodge' | 'mult'
 
 const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12)
 const PROG = [
@@ -104,6 +104,25 @@ class AudioEngine {
         const f = 880 * Math.pow(2, Math.min(arg, 12) / 12)
         this.tone('triangle', f, f, 0.09, 0.16)
         this.tone('triangle', f * 1.5, f * 1.5, 0.14, 0.14, 0.06)
+        break
+      }
+      case 'risk': {
+        const f = 988 * Math.pow(2, Math.min(arg, 12) / 12)
+        this.tone('triangle', f, f, 0.1, 0.17)
+        this.tone('triangle', f * 1.5, f * 1.5, 0.12, 0.15, 0.05)
+        this.tone('sine', f * 2, f * 2, 0.22, 0.12, 0.1)
+        this.burst(0.12, 0.12, 'highpass', 6000, 9000, 0.02)
+        break
+      }
+      case 'dodge': {
+        const f = 660 * Math.pow(2, Math.min(arg, 12) / 12)
+        this.burst(0.2, 0.28, 'bandpass', 500, 3200)
+        this.tone('triangle', f, f * 1.5, 0.14, 0.13, 0.08)
+        break
+      }
+      case 'mult': {
+        const k = Math.pow(2, ((arg - 1) * 2) / 12)
+        ;[523, 659, 784, 1047].forEach((f, i) => this.tone('square', f * k, f * k, 0.1, 0.06, i * 0.05))
         break
       }
       case 'jump':

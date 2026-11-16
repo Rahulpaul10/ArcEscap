@@ -46,8 +46,8 @@ export function Tutorial({ open, onConfirm, onClose }: { open: boolean; onConfir
                   <Zap size={22} fill="currentColor" />
                 </div>
                 <div>
-                  <div className="font-display font-semibold text-[15px]">Collect Arc Energy</div>
-                  <div className="text-[13px] text-[#a9bddf]">Grab shields, magnets and boosts too.</div>
+                  <div className="font-display font-semibold text-[15px]">Dodge toward Energy</div>
+                  <div className="text-[13px] text-[#a9bddf]">Pale-blue Energy beside hazards is worth double. Close calls and pickups build a x2 to x5 score chain.</div>
                 </div>
               </div>
             </div>

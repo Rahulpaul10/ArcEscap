@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { AHEAD, BEHIND, LANE_W, ROAD_W, ROW_LEN, mulberry32 } from './config'
+import { AHEAD, BEHIND, ENERGY_COLOR, LANE_W, ROAD_W, ROW_LEN, mulberry32 } from './config'
 import { geo, mats } from './materials'
 import type { PowerType } from './types'
 
@@ -16,6 +16,7 @@ export interface Obstacle {
   mesh: THREE.Object3D
   baseX: number
   active: boolean
+  passed?: boolean
   sway?: { amp: number; freq: number; phase: number }
   pulse?: { period: number; on: number; phase: number; beam: THREE.Mesh }
   spinner?: THREE.Object3D
@@ -25,6 +26,8 @@ export interface Coin {
   x: number
   y: number
   z: number
+  /** Placed beside or over a hazard: worth double and feeds the dodge chain. */
+  risk: boolean
 }
 
 export interface PowerPickup {
@@ -37,6 +40,8 @@ export interface PowerPickup {
 
 const rowZ = (r: number) => -(r + 0.5) * ROW_LEN
 const laneX = (l: number) => l * LANE_W
+const RISK_COLOR = new THREE.Color(0x9ff6ff)
+const ENERGY = new THREE.Color(ENERGY_COLOR)
 const COIN_CAP = 520
 const ROAD_CAP = 64
 
@@ -52,6 +57,7 @@ export class Track {
   private rng: () => number = mulberry32(1)
   private patternCount = 0
   private lastPattern = -1
+  private firstHazard = true
   private roadMesh: THREE.InstancedMesh
   private coinMesh: THREE.InstancedMesh
   private dummy = new THREE.Object3D()
@@ -61,6 +67,7 @@ export class Track {
     this.roadMesh = new THREE.InstancedMesh(roadGeo, [mats.roadBody, mats.roadBody, mats.road, mats.roadBody, mats.roadBody, mats.roadBody], ROAD_CAP)
     this.roadMesh.frustumCulled = false
     this.coinMesh = new THREE.InstancedMesh(geo.coin, mats.energy, COIN_CAP)
+    this.coinMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(COIN_CAP * 3), 3)
     this.coinMesh.frustumCulled = false
     this.root.add(this.roadMesh, this.coinMesh)
   }
@@ -75,6 +82,7 @@ export class Track {
     this.nextRow = 0
     this.patternCount = 0
     this.lastPattern = -1
+    this.firstHazard = true
     this.rng = mulberry32(seed)
   }
 
@@ -151,14 +159,17 @@ export class Track {
     const count = Math.min(this.coins.length, COIN_CAP)
     for (let i = 0; i < count; i++) {
       const c = this.coins[i]
+      const s = c.risk ? 1.4 + Math.sin(time * 9 + c.z) * 0.14 : 1
       this.dummy.position.set(c.x, c.y + Math.sin(time * 4 + c.z) * 0.06, c.z)
-      this.dummy.rotation.set(0, time * 3.2 + c.z * 0.4, 0)
-      this.dummy.scale.set(1, 1, 1)
+      this.dummy.rotation.set(0, time * (c.risk ? 6 : 3.2) + c.z * 0.4, 0)
+      this.dummy.scale.set(s, s, s)
       this.dummy.updateMatrix()
       this.coinMesh.setMatrixAt(i, this.dummy.matrix)
+      this.coinMesh.setColorAt(i, c.risk ? RISK_COLOR : ENERGY)
     }
     this.coinMesh.count = count
     this.coinMesh.instanceMatrix.needsUpdate = true
+    if (this.coinMesh.instanceColor) this.coinMesh.instanceColor.needsUpdate = true
   }
 
   // ------------------------------------------------------------- generation
@@ -180,8 +191,13 @@ export class Track {
     const rng = this.rng
     this.patternCount++
     let used: number
-    if (r < 10) {
+    const coinStart = this.coins.length
+    if (r < 5) {
       used = this.coinLine(r, 0, 7)
+    } else if (this.firstHazard) {
+      // the very first hazard teaches the dodge-for-energy loop: it blocks the default lane
+      this.firstHazard = false
+      used = this.blockPattern(r, 0, true)
     } else {
       const options: [number, () => number][] = [
         [3, () => this.coinLine(r, this.lane(), 6 + Math.floor(rng() * 4))],
@@ -209,10 +225,28 @@ export class Track {
     }
     const spacing = Math.max(2, Math.ceil((speed * (0.82 - 0.28 * diff)) / ROW_LEN))
     this.nextRow = r + used + spacing
+    this.tagRisk(coinStart)
+  }
+
+  /** Any energy that sits next to, over or under a hazard (or across a gap) becomes risk energy. */
+  private tagRisk(from: number): void {
+    for (let i = from; i < this.coins.length; i++) {
+      const c = this.coins[i]
+      if (this.gapRows.has(Math.floor(-c.z / ROW_LEN))) {
+        c.risk = true
+        continue
+      }
+      for (const o of this.obstacles) {
+        if (Math.abs(o.z - c.z) <= o.hd + 2.2 && Math.abs(o.baseX - c.x) <= LANE_W + 0.3) {
+          c.risk = true
+          break
+        }
+      }
+    }
   }
 
   private addCoin(x: number, y: number, z: number): void {
-    this.coins.push({ x, y, z })
+    this.coins.push({ x, y, z, risk: false })
   }
 
   private coinLine(r: number, lane: number, n: number): number {
@@ -298,13 +332,21 @@ export class Track {
     return 4
   }
 
-  private blockPattern(r: number, diff: number): number {
-    const lanes = this.shuffledLanes()
+  private blockPattern(r: number, diff: number, first = false): number {
+    let lanes: number[]
+    if (first) {
+      const side = this.rng() > 0.5 ? 1 : -1
+      lanes = [0, side, -side]
+    } else lanes = this.shuffledLanes()
     const k = diff > 0.18 && this.rng() > 0.5 ? 2 : 1
     const blocked = lanes.slice(0, k)
     const free = lanes.slice(k)
     for (const l of blocked) this.addBlock(l, r + 1)
-    this.coinsFreeLane(free[0], r, 3)
+    // lead-in energy in the threatened lane, then a trail flanking the block in the free lane:
+    // swerving to grab it IS the dodge.
+    const z0 = -(r * ROW_LEN)
+    for (const dz of [0.5, 2.2]) this.addCoin(laneX(blocked[0]), 0.9, z0 - dz)
+    for (const dz of [5.2, 7, 8.8]) this.addCoin(laneX(free[0]), 0.9, z0 - dz)
     if (diff > 0.45 && this.rng() < 0.45) {
       const nextFree = free[free.length - 1] === free[0] ? lanes[0] : free[free.length - 1]
       const f2 = Math.abs(nextFree - free[0]) <= 1 ? nextFree : 0
@@ -342,6 +384,7 @@ export class Track {
     }
     const ph = this.rng() * Math.PI * 2
     mk(r + 1, ph)
+    this.arcCoins(laneX(this.lane()), rowZ(r + 1), 5, 6, 1.4)
     if (diff > 0.55) {
       mk(r + 4, ph + Math.PI)
       return 6

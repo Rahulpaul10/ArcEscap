@@ -6,12 +6,15 @@ import {
 import { audio } from './audio'
 import { Input } from './input'
 import { applyTheme, bendUniform } from './materials'
-import type { Skin } from './progress'
+import { getProgress, type Skin } from './progress'
 import { Runner, type RunnerMode } from './runner'
 import { Atmosphere, Backdrop, Scenery } from './scenery'
 import { Track } from './track'
 import { emptyHud, type Action, type EngineEvents, type HudState, type Phase, type PowerType, type RunStats } from './types'
 
+const CHAIN_TIME = 3.6
+const EVADE_WINDOW = 1.15
+const RISK_COLOR = 0x9ff6ff
 const POWER_COLORS: Record<PowerType, number> = { shield: 0x4da3ff, magnet: 0xff4d6d, boost: 0x3dff8a }
 const POWER_LABEL: Record<PowerType, string> = { shield: 'Shield online', magnet: 'Magnet field', boost: 'Overdrive' }
 
@@ -61,8 +64,17 @@ export class Engine {
   private invuln = 0
   private boostMul = 1
   private collectPulse = 0
-  private combo = 0
-  private comboT = 0
+  private chain = 0
+  private chainT = 0
+  private mult = 1
+  private surge = 0
+  private surgeMul = 1
+  private energyScore = 0
+  private distScore = 0
+  private lastEvade = -10
+  private overGap = false
+  private riskHinted = false
+  private startHinted = false
   private energy = 0
   private extraScore = 0
   private nextMilestone = MILESTONE_STEP
@@ -162,7 +174,7 @@ export class Engine {
 
   // ------------------------------------------------------------- state
   private freshStats(): RunStats {
-    return { score: 0, distance: 0, energy: 0, jumps: 0, slides: 0, shields: 0, magnets: 0, boosts: 0, milestones: 0 }
+    return { score: 0, distance: 0, energy: 0, dodges: 0, jumps: 0, slides: 0, shields: 0, magnets: 0, boosts: 0, milestones: 0 }
   }
 
   private setPhase(p: Phase): void {
@@ -190,7 +202,13 @@ export class Engine {
     this.queuedSlide = false
     this.shield = this.magnet = this.boost = this.invuln = 0
     this.boostMul = 1
-    this.combo = this.comboT = 0
+    this.chain = this.chainT = this.surge = 0
+    this.mult = 1
+    this.surgeMul = 1
+    this.energyScore = this.distScore = 0
+    this.lastEvade = -10
+    this.overGap = false
+    this.riskHinted = this.startHinted = false
     this.energy = 0
     this.extraScore = 0
     this.nextMilestone = MILESTONE_STEP
@@ -209,7 +227,7 @@ export class Engine {
   }
 
   private score(): number {
-    return Math.floor(this.dist) + this.energy * 10 + Math.floor(this.extraScore)
+    return Math.floor(this.distScore) + Math.floor(this.energyScore) + Math.floor(this.extraScore)
   }
 
   private emitHud(): void {
@@ -224,6 +242,9 @@ export class Engine {
       boost: this.boost > 0 ? this.boost / POWER_DURATION.boost : 0,
     }
     h.section = live.name
+    h.mult = this.mult
+    h.chain = this.chainT > 0 ? Math.min(1, this.chainT / CHAIN_TIME) : 0
+    h.surge = this.surge > 0
     this.ev.onHud(h)
   }
 
@@ -244,6 +265,7 @@ export class Engine {
       const next = Math.max(-1, Math.min(1, this.lane + (a === 'left' ? -1 : 1)))
       if (next !== this.lane) {
         this.lane = next
+        this.lastEvade = this.time
         audio.play('tick')
       }
     } else if (a === 'jump') {
@@ -259,6 +281,7 @@ export class Engine {
   }
 
   private jump(): void {
+    this.lastEvade = this.time
     this.vy = JUMP_V
     this.y = 0.02
     this.slideT = 0
@@ -267,6 +290,7 @@ export class Engine {
   }
 
   private slide(): void {
+    this.lastEvade = this.time
     this.slideT = SLIDE_TIME
     this.stats.slides++
     audio.play('slide')
@@ -305,11 +329,13 @@ export class Engine {
     const baseSpeed = BASE_SPEED + (MAX_SPEED - BASE_SPEED) * (1 - Math.exp(-this.dist / 1800))
     this.boostMul += ((this.boost > 0 ? 1.45 : 1) - this.boostMul) * Math.min(1, dt * 4)
     const ramp = Math.min(1, 0.35 + this.runTime / 0.9)
-    this.speed = baseSpeed * this.boostMul * ramp
+    this.surgeMul += ((this.surge > 0 ? 1.1 : 1) - this.surgeMul) * Math.min(1, dt * 6)
+    this.speed = baseSpeed * this.boostMul * this.surgeMul * ramp
 
     const prevZ = this.z
     this.z -= this.speed * dt
     this.dist = -this.z
+    this.distScore += this.speed * dt * (1 + (this.mult - 1) * 0.25)
 
     // lateral movement (eased toward lane target)
     const tx = this.lane * LANE_W
@@ -322,9 +348,14 @@ export class Engine {
       if (this.y > 0 || this.vy > 0) {
         this.vy -= GRAVITY * dt
         this.y += this.vy * dt
+        if (this.y > 0.2 && this.track.isGap(this.z, 0)) this.overGap = true
         if (this.y <= 0) {
           this.y = 0
           this.vy = 0
+          if (this.overGap) {
+            this.overGap = false
+            this.closeCall('Gap cleared', this.x, 0.5, this.z)
+          }
           if (this.queuedSlide) {
             this.slide()
             this.queuedSlide = false
@@ -348,8 +379,18 @@ export class Engine {
 
     // timers
     this.invuln = Math.max(0, this.invuln - dt)
-    this.comboT -= dt
-    if (this.comboT <= 0) this.combo = 0
+    this.surge = Math.max(0, this.surge - dt)
+    if (this.chainT > 0) {
+      this.chainT -= dt
+      if (this.chainT <= 0) {
+        this.chain = 0
+        this.setMult(1)
+      }
+    }
+    if (!this.startHinted && this.runTime > 1 && getProgress().totals.runs < 3) {
+      this.startHinted = true
+      this.ev.onToast('Dodge close to Energy to build a chain', 'info')
+    }
     this.collectPulse = Math.max(0, this.collectPulse - dt * 4)
     this.shake = Math.max(0, this.shake - dt * 2.2)
     for (const k of ['shield', 'magnet', 'boost'] as const) {
@@ -365,11 +406,13 @@ export class Engine {
     this.collect(dt)
     this.collide(prevZ)
     if (this.phase !== 'playing') return
+    this.checkDodges()
 
     // milestones and districts
     if (this.dist >= this.nextMilestone) {
       const bonus = 15 + (this.nextMilestone / MILESTONE_STEP) * 5
       this.energy += bonus
+      this.energyScore += bonus * 10
       this.stats.milestones++
       this.ev.onToast(`${this.nextMilestone} m reached  +${bonus} energy`, 'info')
       audio.play('milestone')
@@ -405,12 +448,7 @@ export class Engine {
       if (Math.abs(c.x - this.x) < 0.95 && Math.abs(c.y - py) < 1.15) {
         coins.splice(i, 1)
         taken = true
-        this.energy++
-        this.combo++
-        this.comboT = 0.7
-        this.collectPulse = 1
-        this.atmos.emit(c.x, c.y, c.z, ENERGY_COLOR, 6, 4)
-        audio.play('coin', this.combo % 13)
+        this.pickEnergy(c.risk, c.x, c.y, c.z)
       }
     }
     if (taken) this.glowLight.intensity = 90
@@ -420,6 +458,81 @@ export class Engine {
         this.track.removePower(p)
         this.activate(p.type, p.x, p.y, p.z)
       }
+    }
+  }
+
+  private gainChain(n: number): void {
+    this.chain += n
+    this.chainT = CHAIN_TIME
+    this.setMult(Math.min(5, 1 + Math.floor(this.chain / 6)))
+  }
+
+  private setMult(m: number): void {
+    if (m === this.mult) return
+    const up = m > this.mult
+    this.mult = m
+    if (up) {
+      this.ev.onToast(`x${m} multiplier`, 'power')
+      audio.play('mult', m)
+    }
+    this.emitHud()
+  }
+
+  private pickEnergy(risk: boolean, x: number, y: number, z: number): void {
+    const value = risk ? 2 : 1
+    this.energy += value
+    this.energyScore += 10 * value * this.mult
+    this.collectPulse = 1
+    this.gainChain(value)
+    // the pitch climbs with the chain so a streak is audible
+    const step = Math.min(12, this.chain)
+    if (risk) {
+      this.surge = Math.max(this.surge, 0.7)
+      this.atmos.emit(x, y, z, RISK_COLOR, 16, 6)
+      this.atmos.emit(x, y, z, 0xffffff, 4, 3)
+      this.glowLight.intensity = 170
+      audio.play('risk', step)
+      if (!this.riskHinted) {
+        this.riskHinted = true
+        this.ev.onToast('Risk Energy: double value, chain and surge', 'energy')
+      }
+    } else {
+      this.atmos.emit(x, y, z, ENERGY_COLOR, 6, 4)
+      audio.play('coin', step)
+    }
+  }
+
+  /** A hazard passed without a hit while you were actively evading it. */
+  private closeCall(label: string, x: number, y: number, z: number): void {
+    this.gainChain(3)
+    this.surge = Math.max(this.surge, 0.8)
+    this.extraScore += 20 * this.mult
+    this.collectPulse = 1
+    this.stats.dodges++
+    this.atmos.emit(x, y + 0.6, z, RISK_COLOR, 18, 7)
+    this.glowLight.intensity = 130
+    this.ev.onToast(this.mult > 1 ? `${label}  x${this.mult}` : label, 'energy')
+    audio.play('dodge', Math.min(12, this.chain))
+  }
+
+  private checkDodges(): void {
+    const top = this.y + (this.slideT > 0 ? SLIDE_H : STAND_H) - 0.12
+    const bottom = this.y + 0.05
+    const evading = this.time - this.lastEvade < EVADE_WINDOW
+    for (const o of this.track.obstacles) {
+      if (o.passed || o.z < this.z) continue
+      o.passed = true
+      if (!evading || this.falling) continue
+      const dx = Math.abs(o.x - this.x)
+      const latGap = dx - o.hw - 0.38
+      let label = ''
+      if (latGap < 0.05) {
+        // lined up with it: only a clean jump, slide or laser gap counts
+        if (bottom >= o.y1) label = 'Jumped it'
+        else if (top <= o.y0) label = 'Slid under'
+        else if (o.kind === 'laser' && !o.active) label = 'Threaded the laser'
+      } else if (latGap <= 1.25) label = 'Close call'
+      if (label) this.closeCall(label, o.x, Math.max(0.5, o.y1 * 0.5), o.z)
     }
   }
 
@@ -592,7 +705,7 @@ export class Engine {
     this.camera.lookAt(this.camLook)
     const aspect = this.camera.aspect
     const baseFov = aspect < 0.8 ? 74 : aspect < 1.2 ? 68 : 62
-    const targetFov = this.phase === 'menu' ? baseFov - 14 : baseFov + speedNorm * 8 + (this.boost > 0 ? 8 : 0)
+    const targetFov = this.phase === 'menu' ? baseFov - 14 : baseFov + speedNorm * 8 + (this.boost > 0 ? 8 : 0) + (this.surge > 0 ? 4 : 0)
     this.fov += (targetFov - this.fov) * Math.min(1, dt * 4)
     if (Math.abs(this.camera.fov - this.fov) > 0.05) {
       this.camera.fov = this.fov

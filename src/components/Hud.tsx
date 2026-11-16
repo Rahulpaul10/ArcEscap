@@ -53,6 +53,27 @@ export function Hud({ hud, toast, onPause, visible }: { hud: HudState; toast: To
             <div>
               <div className="font-display text-[40px] leading-none font-bold tracking-tight tabular-nums drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">{fmt(hud.score)}</div>
               <div className="mt-1 text-[13px] font-medium text-[#b5c8e8] tabular-nums">{fmt(hud.distance)} m</div>
+              <AnimatePresence>
+                {hud.mult > 1 && (
+                  <motion.div
+                    key="mult"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    className="mt-2 w-28"
+                  >
+                    <div className="flex items-center gap-1.5 font-display font-bold text-[20px] leading-none text-[#9ff6ff] drop-shadow-[0_0_12px_rgba(159,246,255,0.7)]">
+                      <motion.span key={hud.mult} initial={{ scale: 1.6 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 400, damping: 18 }}>
+                        x{hud.mult}
+                      </motion.span>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8fa6cc]">chain</span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div className={`h-full rounded-full ${hud.surge ? 'bg-white' : 'bg-[#9ff6ff]'}`} style={{ width: `${Math.round(hud.chain * 100)}%` }} />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
             <div className="flex items-center gap-2 pointer-events-auto">
               <div className="flex items-center gap-1.5 h-11 pl-3 pr-4 rounded-full glass text-[#ffc83d] font-display font-semibold tabular-nums">

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { ENERGY_COLOR, HAZARD, LANE_W, ROAD_W, live } from './config'
+import { HAZARD, LANE_W, ROAD_W, live } from './config'
 
 /** Shared "world bend" uniform: curves the horizon left/right and up/down for the winding-road feel. */
 export const bendUniform = { value: new THREE.Vector2(0, 0) }
@@ -190,7 +190,7 @@ export const mats = {
   hazardGlow: bend(new THREE.MeshBasicMaterial({ color: HAZARD })),
   laserOn: bend(new THREE.MeshBasicMaterial({ color: 0xff5a6a })),
   laserOff: bend(new THREE.MeshBasicMaterial({ color: 0xff5a6a, transparent: true, opacity: 0.12, depthWrite: false })),
-  energy: bend(new THREE.MeshBasicMaterial({ color: ENERGY_COLOR })),
+  energy: bend(new THREE.MeshBasicMaterial({ color: 0xffffff })),
   shield: bend(new THREE.MeshBasicMaterial({ color: 0x4da3ff })),
   magnet: bend(new THREE.MeshBasicMaterial({ color: 0xff4d6d })),
   boost: bend(new THREE.MeshBasicMaterial({ color: 0x3dff8a })),

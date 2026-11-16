@@ -10,12 +10,18 @@ export interface HudState {
   /** remaining fraction 0..1 for each power-up, 0 when inactive */
   powers: Record<PowerType, number>
   section: string
+  /** score multiplier 1..5 */
+  mult: number
+  /** remaining fraction of the chain timer 0..1 */
+  chain: number
+  surge: boolean
 }
 
 export interface RunStats {
   score: number
   distance: number
   energy: number
+  dodges: number
   jumps: number
   slides: number
   shields: number
@@ -38,4 +44,7 @@ export const emptyHud = (): HudState => ({
   speed: 0,
   powers: { shield: 0, magnet: 0, boost: 0 },
   section: 'Neon Core',
+  mult: 1,
+  chain: 0,
+  surge: false,
 })
