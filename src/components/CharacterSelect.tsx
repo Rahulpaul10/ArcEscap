@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronLeft, ChevronRight, Play, Shuffle } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CHARACTERS, characterById, type Character } from '@/game/characters'
 import { Btn } from './ui'
 
@@ -34,6 +34,7 @@ function Swatch({ c, size = 44 }: { c: Character; size?: number }) {
 }
 
 export function CharacterSelect({ open, selectedId, onPick, onConfirm, onClose }: Props) {
+  const rowRef = useRef<HTMLDivElement>(null)
   const [filter, setFilter] = useState<'all' | 'female' | 'male'>('all')
   const current = characterById(selectedId)
   const list = CHARACTERS.filter((c) => filter === 'all' || c.gender === filter)
@@ -45,7 +46,10 @@ export function CharacterSelect({ open, selectedId, onPick, onConfirm, onClose }
   }
 
   useEffect(() => {
-    if (open) document.getElementById(`chip-${selectedId}`)?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
+    // keep the selected card centred by scrolling only the card row (never the page or any ancestor)
+    const row = rowRef.current
+    const chip = row?.querySelector<HTMLElement>(`[data-chip="${selectedId}"]`)
+    if (open && row && chip) row.scrollTo({ left: chip.offsetLeft - row.clientWidth / 2 + chip.offsetWidth / 2, behavior: 'smooth' })
   }, [open, selectedId, filter])
 
   useEffect(() => {
@@ -141,16 +145,23 @@ export function CharacterSelect({ open, selectedId, onPick, onConfirm, onClose }
                 </button>
               </div>
 
-              <div className="mt-3 flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 snap-x [scrollbar-width:none]">
+              <div ref={rowRef} className="relative mt-3 flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:none]">
                 {list.map((c) => {
                   const active = c.id === selectedId
                   return (
-                    <button key={c.id} id={`chip-${c.id}`} onClick={() => (active ? onConfirm() : onPick(c.id))} aria-label={`Select ${c.name}`} aria-pressed={active} className="relative snap-center shrink-0 flex flex-col items-center gap-1 px-1.5 py-1.5 rounded-2xl active:scale-95 transition-transform">
-                      {active && <motion.span layoutId="char-ring" className="absolute inset-0 rounded-2xl bg-white/10 ring-1 ring-[#acc6e9]" transition={{ type: 'spring', damping: 24, stiffness: 340 }} />}
-                      <motion.span className="relative" animate={{ scale: active ? 1.12 : 1, y: active ? -2 : 0 }} transition={{ type: 'spring', stiffness: 380, damping: 20 }}>
+                    <button
+                      key={c.id}
+                      type="button"
+                      data-chip={c.id}
+                      onClick={() => onPick(c.id)}
+                      aria-label={`Select ${c.name}`}
+                      aria-pressed={active}
+                      className={`shrink-0 flex flex-col items-center gap-1 px-1.5 py-1.5 rounded-2xl transition-[background-color,box-shadow,transform] duration-150 active:scale-95 ${active ? 'bg-white/10 ring-1 ring-[#acc6e9]' : 'opacity-80'}`}
+                    >
+                      <span className={`pointer-events-none transition-transform duration-150 ${active ? '-translate-y-0.5 scale-110' : ''}`}>
                         <Swatch c={c} />
-                      </motion.span>
-                      <span className={`relative text-[11px] font-semibold ${active ? 'text-white' : 'text-[#8fa6cc]'}`}>{c.name}</span>
+                      </span>
+                      <span className={`pointer-events-none text-[11px] font-semibold ${active ? 'text-white' : 'text-[#8fa6cc]'}`}>{c.name}</span>
                     </button>
                   )
                 })}
@@ -159,7 +170,7 @@ export function CharacterSelect({ open, selectedId, onPick, onConfirm, onClose }
               <Btn variant="primary" className="w-full mt-3" onClick={onConfirm}>
                 <Play size={18} fill="currentColor" /> Run as {current.name}
               </Btn>
-              <p className="mt-2 text-center text-[11px] text-[#8fa6cc]">Tap a runner to preview, tap it again to start running</p>
+              <p className="mt-2 text-center text-[11px] text-[#8fa6cc]">Tap any runner to preview it, then press Run</p>
             </div>
           </motion.div>
         </motion.div>
