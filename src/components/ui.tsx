@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
+import { ARC_MARK_PATH } from '@/game/arcMark'
 
 export const fmt = (n: number) => Math.floor(n).toLocaleString('en-US')
 
@@ -75,4 +76,13 @@ export function CountUp({ value, duration = 900, delay = 0 }: { value: number; d
 
 export function Label({ children }: { children: ReactNode }) {
   return <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8fa6cc]">{children}</span>
+}
+
+/** The Arc arch mark, used wherever Arc Energy is shown. */
+export function ArcMark({ size = 16, className = '' }: { size?: number; className?: string }) {
+  return (
+    <svg width={size * 0.91} height={size} viewBox="0 0 20 22" fill="currentColor" className={className} aria-hidden="true">
+      <path d={ARC_MARK_PATH} />
+    </svg>
+  )
 }

@@ -10,7 +10,7 @@ This is the **project memory** - what Arc Studio remembers about building this a
 
 Arc Escape: a 3D endless runner (three.js) with procedural tracks, power-ups, skins, daily challenge and badges. Offline, no backend, progress in localStorage.
 
-Layout: `src/game/` holds the engine (`engine.ts` loop and collisions, `track.ts` procedural generator, `scenery.ts` city and particles, `runner.ts` character, `audio.ts` WebAudio synth, `progress.ts` storage, skins, badges and daily). `src/components/` is the React UI; `src/game/useArcEscape.ts` bridges the engine to React. Tuning constants live in `src/game/config.ts`.
+Layout: `src/game/` holds the engine (`engine.ts` loop and collisions, `track.ts` procedural generator, `scenery.ts` city and particles, `runner.ts` character, `audio.ts` WebAudio synth, `progress.ts` storage, skins, badges and daily). `src/components/` is the React UI; `src/game/useArcEscape.ts` bridges the engine to React. Tuning constants live in `src/game/config.ts`. Characters (cosmetic only, data-driven roster in `src/game/characters.ts`; hair, accessory, outfit and backpack builders in `src/game/cosmetics.ts`); the coin face uses the Arc mark from `src/game/arcMark.ts`.
 
 ## Tech Stack
 
@@ -43,3 +43,8 @@ Layout: `src/game/` holds the engine (`engine.ts` loop and collisions, `track.ts
 bun install
 bun run dev
 ```
+
+## Rendering notes
+
+- `src/game/post.ts` (bloom, grade, tone mapping) and `src/game/env.ts` (reflection environment) are created in `engine.ts`; `engine.ts` sheds quality in steps (resolution, bloom, shadows, post pipeline) when the frame rate drops.
+- The character rig lives in `runner.ts` with geometry helpers in `bodyparts.ts`, the face in `face.ts` and poses in `poses.ts`. Scenery rows are merged into a few meshes per row in `scenery.ts`.

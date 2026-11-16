@@ -40,8 +40,8 @@ export interface PowerPickup {
 
 const rowZ = (r: number) => -(r + 0.5) * ROW_LEN
 const laneX = (l: number) => l * LANE_W
-const RISK_COLOR = new THREE.Color(0x9ff6ff)
-const ENERGY = new THREE.Color(ENERGY_COLOR)
+const RISK_COLOR = new THREE.Color(0x9ff6ff).multiplyScalar(1.25)
+const ENERGY = new THREE.Color(ENERGY_COLOR).multiplyScalar(1.25)
 const COIN_CAP = 520
 const ROAD_CAP = 64
 
@@ -66,6 +66,7 @@ export class Track {
     const roadGeo = new THREE.BoxGeometry(ROAD_W, 0.5, ROW_LEN)
     this.roadMesh = new THREE.InstancedMesh(roadGeo, [mats.roadBody, mats.roadBody, mats.road, mats.roadBody, mats.roadBody, mats.roadBody], ROAD_CAP)
     this.roadMesh.frustumCulled = false
+    this.roadMesh.receiveShadow = true
     this.coinMesh = new THREE.InstancedMesh(geo.coin, mats.energy, COIN_CAP)
     this.coinMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(COIN_CAP * 3), 3)
     this.coinMesh.frustumCulled = false
@@ -276,6 +277,9 @@ export class Track {
   private obstacle(kind: ObstacleKind, lane: number, row: number, mesh: THREE.Object3D, box: { hw: number; hd: number; y0: number; y1: number }): Obstacle {
     const o: Obstacle = { kind, x: laneX(lane), baseX: laneX(lane), z: rowZ(row), ...box, mesh, active: true }
     mesh.position.set(o.x, 0, o.z)
+    mesh.traverse((c) => {
+      c.castShadow = true
+    })
     this.root.add(mesh)
     this.obstacles.push(o)
     return o
@@ -290,7 +294,7 @@ export class Track {
 
   private addLow(lane: number, row: number): void {
     const g = new THREE.Group()
-    g.add(this.mk(mats.hazard, 1.9, 0.75, 0.55, 0, 0.375), this.mk(mats.hazardGlow, 1.95, 0.1, 0.6, 0, 0.82))
+    g.add(this.mk(mats.hazardStripe, 1.9, 0.75, 0.55, 0, 0.375), this.mk(mats.hazardGlow, 1.95, 0.1, 0.6, 0, 0.82))
     this.obstacle('low', lane, row, g, { hw: 0.95, hd: 0.3, y0: 0, y1: 0.9 })
   }
 

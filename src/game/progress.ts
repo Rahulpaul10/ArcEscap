@@ -23,6 +23,9 @@ export interface Progress {
   bank: number
   skins: string[]
   skin: string
+  /** selected playable character (cosmetic only) */
+  character: string
+  characterChosen: boolean
   achievements: string[]
   totals: Totals
   daily: { date: string; progress: number; done: boolean }
@@ -43,11 +46,11 @@ export interface Skin {
 }
 
 export const SKINS: Skin[] = [
-  { id: 'pulse', name: 'Pulse', blurb: 'The standard-issue Arc runner.', cost: 0, suit: 0x1b2447, trim: 0x35f2ff, glow: 0x35f2ff, visor: 0xffffff },
-  { id: 'ember', name: 'Ember', blurb: 'Forged in the Solar Bridge.', cost: 300, suit: 0x3a1a1a, trim: 0xff8a3d, glow: 0xffa63d, visor: 0xfff1d0 },
-  { id: 'mint', name: 'Mint', blurb: 'Quiet, fast, and always in sync.', cost: 800, suit: 0x0f2e2a, trim: 0x3dffb0, glow: 0x3dffb0, visor: 0xeafff6 },
-  { id: 'phantom', name: 'Phantom', blurb: 'Slips between blocks unseen.', cost: 1600, suit: 0x1c1238, trim: 0xa56bff, glow: 0xff3df0, visor: 0xf3e6ff },
-  { id: 'aurum', name: 'Aurum', blurb: 'Solid gold finality.', cost: 3200, suit: 0x2c2410, trim: 0xffd54a, glow: 0xffd54a, visor: 0xfffbe6 },
+  { id: 'pulse', name: 'Signature', blurb: "Your runner's own colors.", cost: 0, suit: 0x1b2447, trim: 0x35f2ff, glow: 0x35f2ff, visor: 0xffffff },
+  { id: 'ember', name: 'Ember', blurb: 'Forged in the Solar Bridge.', cost: 300, suit: 0xe8552e, trim: 0xffd08a, glow: 0xffa63d, visor: 0xfff1d0 },
+  { id: 'mint', name: 'Mint', blurb: 'Quiet, fast, and always in sync.', cost: 800, suit: 0x1fb98a, trim: 0xd7fff0, glow: 0x3dffb0, visor: 0xeafff6 },
+  { id: 'phantom', name: 'Phantom', blurb: 'Slips between blocks unseen.', cost: 1600, suit: 0x7a4dff, trim: 0xffb3f0, glow: 0xff3df0, visor: 0xf3e6ff },
+  { id: 'aurum', name: 'Aurum', blurb: 'Solid gold finality.', cost: 3200, suit: 0xf5b021, trim: 0xfff3b0, glow: 0xffd54a, visor: 0xfffbe6 },
 ]
 export const skinById = (id: string): Skin => SKINS.find((s) => s.id === id) ?? SKINS[0]
 
@@ -120,6 +123,8 @@ const defaults = (): Progress => ({
   bank: 0,
   skins: ['pulse'],
   skin: 'pulse',
+  character: 'kai',
+  characterChosen: false,
   achievements: [],
   totals: { runs: 0, distance: 0, energy: 0, jumps: 0, slides: 0, shields: 0, magnets: 0, boosts: 0, dailyCompleted: 0 },
   daily: { date: '', progress: 0, done: false },
@@ -259,4 +264,16 @@ export function buyOrSelectSkin(id: string): 'selected' | 'bought' | 'poor' {
     }
   })
   return result
+}
+
+export function selectCharacter(id: string): void {
+  updateProgress((p) => {
+    p.character = id
+  })
+}
+
+export function confirmCharacter(): void {
+  updateProgress((p) => {
+    p.characterChosen = true
+  })
 }

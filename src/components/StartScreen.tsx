@@ -1,19 +1,20 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { CalendarCheck, HelpCircle, Palette, Play, Trophy, Volume2, VolumeX, Zap } from 'lucide-react'
+import { CalendarCheck, HelpCircle, Palette, Play, Trophy, User, Volume2, VolumeX } from 'lucide-react'
 import { dailyView, type Progress } from '@/game/progress'
-import { Btn, fmt } from './ui'
+import { ArcMark, Btn, fmt } from './ui'
 
 interface Props {
   visible: boolean
   progress: Progress
   onPlay: () => void
   onSkins: () => void
+  onCharacter: () => void
   onProgress: () => void
   onHelp: () => void
   onMute: () => void
 }
 
-export function StartScreen({ visible, progress, onPlay, onSkins, onProgress, onHelp, onMute }: Props) {
+export function StartScreen({ visible, progress, onPlay, onSkins, onCharacter, onProgress, onHelp, onMute }: Props) {
   const daily = dailyView(progress)
   return (
     <AnimatePresence>
@@ -26,7 +27,7 @@ export function StartScreen({ visible, progress, onPlay, onSkins, onProgress, on
         >
           <div className="w-full max-w-md flex items-start justify-between">
             <div className="flex items-center gap-1.5 h-11 pl-3 pr-4 rounded-full glass text-[#ffc83d] font-display font-semibold tabular-nums">
-              <Zap size={17} fill="currentColor" />
+              <ArcMark size={17} />
               {fmt(progress.bank)}
             </div>
             <div className="flex gap-2 pointer-events-auto">
@@ -71,10 +72,13 @@ export function StartScreen({ visible, progress, onPlay, onSkins, onProgress, on
               <Play size={18} fill="currentColor" /> Run
             </Btn>
             <div className="flex gap-2">
-              <Btn onClick={onSkins}>
-                <Palette size={16} /> Skins
+              <Btn className="!px-4" onClick={onCharacter}>
+                <User size={16} /> Runner
               </Btn>
-              <Btn onClick={onProgress}>
+              <Btn className="!px-4" onClick={onSkins}>
+                <Palette size={16} /> Colors
+              </Btn>
+              <Btn className="!px-4" onClick={onProgress}>
                 <Trophy size={16} /> Progress
               </Btn>
             </div>

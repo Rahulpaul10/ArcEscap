@@ -4,9 +4,12 @@ import {
   blendTheme, live,
 } from './config'
 import { audio } from './audio'
+import { makeEnvironment } from './env'
 import { Input } from './input'
+import { PostFX } from './post'
 import { applyTheme, bendUniform } from './materials'
 import { getProgress, type Skin } from './progress'
+import { lookFor, type Character } from './characters'
 import { Runner, type RunnerMode } from './runner'
 import { Atmosphere, Backdrop, Scenery } from './scenery'
 import { Track } from './track'
@@ -15,6 +18,7 @@ import { emptyHud, type Action, type EngineEvents, type HudState, type Phase, ty
 const CHAIN_TIME = 3.6
 const EVADE_WINDOW = 1.15
 const RISK_COLOR = 0x9ff6ff
+const WHITE = new THREE.Color(1, 1, 1)
 const POWER_COLORS: Record<PowerType, number> = { shield: 0x4da3ff, magnet: 0xff4d6d, boost: 0x3dff8a }
 const POWER_LABEL: Record<PowerType, string> = { shield: 'Shield online', magnet: 'Magnet field', boost: 'Overdrive' }
 
@@ -22,15 +26,15 @@ const POWER_LABEL: Record<PowerType, string> = { shield: 'Shield online', magnet
 export class Engine {
   private renderer: THREE.WebGLRenderer
   private scene = new THREE.Scene()
-  private camera = new THREE.PerspectiveCamera(66, 1, 0.1, 420)
+  private camera = new THREE.PerspectiveCamera(66, 1, 0.1, 720)
   private runner = new Runner()
   private scenery = new Scenery()
   private backdrop = new Backdrop()
   private atmos = new Atmosphere()
   private track = new Track()
-  private hemi = new THREE.HemisphereLight(0xffffff, 0x101030, 2.4)
-  private dirLight = new THREE.DirectionalLight(0xffffff, 2.2)
-  private glowLight = new THREE.PointLight(0xffffff, 30, 16, 2)
+  private hemi = new THREE.HemisphereLight(0xffffff, 0x101030, 0.55)
+  private dirLight = new THREE.DirectionalLight(0xffffff, 2.1)
+  private glowLight = new THREE.PointLight(0xffffff, 6, 12, 2)
   private input: Input
   private ro: ResizeObserver
   private raf = 0
@@ -64,6 +68,10 @@ export class Engine {
   private invuln = 0
   private boostMul = 1
   private collectPulse = 0
+  private collectSide = 1
+  private dodgePulse = 0
+  private dodgeDir = 0
+  private threat = 0
   private chain = 0
   private chainT = 0
   private mult = 1
@@ -89,24 +97,48 @@ export class Engine {
   private camLook = new THREE.Vector3(0, 1.1, 0)
   private tmpA = new THREE.Vector3()
   private fov = 66
+  private preview = false
+  private post: PostFX | null = null
+  private bloomOn = true
+  private shadowsOn = true
+  private camRoll = 0
+  private popT = 1
   private sceneSeed = 0
 
   constructor(
     private host: HTMLElement,
     private ev: EngineEvents,
+    character: Character,
     skin: Skin,
     muted: boolean,
   ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: (window.devicePixelRatio || 1) < 2, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(this.pixelRatio)
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+    this.renderer.toneMappingExposure = 0.88
+    this.renderer.shadowMap.enabled = true
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     const canvas = this.renderer.domElement
     canvas.style.cssText = 'width:100%;height:100%;display:block;touch-action:none;outline:none'
     host.appendChild(canvas)
 
-    this.scene.fog = new THREE.Fog(0x0a1030, 30, 150)
+    this.scene.fog = new THREE.Fog(0x0a1030, 60, 270)
+    this.scene.environment = makeEnvironment(this.renderer)
+    this.scene.environmentIntensity = 0.3
+    this.dirLight.castShadow = true
+    this.dirLight.shadow.mapSize.set(1024, 1024)
+    const sc = this.dirLight.shadow.camera
+    sc.left = -16
+    sc.right = 16
+    sc.top = 26
+    sc.bottom = -20
+    sc.near = 1
+    sc.far = 80
+    this.dirLight.shadow.bias = -0.0006
+    this.dirLight.shadow.normalBias = 0.03
     this.scene.add(this.hemi, this.dirLight, this.glowLight, this.track.root, this.scenery.root, this.backdrop.root, this.atmos.root, this.runner.root, this.dirLight.target)
     this.dirLight.position.set(-6, 14, 6)
-    this.runner.setSkin(skin)
+    this.runner.setLook(character, lookFor(character, skin))
     audio.setMuted(muted)
 
     this.input = new Input(host, (a) => this.handleAction(a))
@@ -114,6 +146,7 @@ export class Engine {
     this.ro.observe(host)
     document.addEventListener('visibilitychange', this.onVisibility)
     this.resize()
+    this.createPost()
     this.prepare()
     this.snapCamera()
     this.last = performance.now()
@@ -125,8 +158,16 @@ export class Engine {
     return this.phase
   }
 
-  setSkin(skin: Skin): void {
-    this.runner.setSkin(skin)
+  /** Change character and/or colorway. Plays a short pop + spin so the swap reads clearly. */
+  setLook(character: Character, skin: Skin): void {
+    this.runner.setLook(character, lookFor(character, skin))
+    if (this.phase === 'menu') this.popT = 0
+  }
+
+  /** Character-select mode: closer turntable camera. */
+  setPreview(on: boolean): void {
+    this.preview = on
+    if (on) this.popT = 0
   }
 
   setMuted(m: boolean): void {
@@ -168,6 +209,7 @@ export class Engine {
     this.ro.disconnect()
     document.removeEventListener('visibilitychange', this.onVisibility)
     audio.stopMusic()
+    this.post?.dispose()
     this.renderer.dispose()
     this.renderer.domElement.remove()
   }
@@ -203,6 +245,7 @@ export class Engine {
     this.shield = this.magnet = this.boost = this.invuln = 0
     this.boostMul = 1
     this.chain = this.chainT = this.surge = 0
+    this.dodgePulse = this.dodgeDir = this.threat = 0
     this.mult = 1
     this.surgeMul = 1
     this.energyScore = this.distScore = 0
@@ -307,7 +350,25 @@ export class Engine {
     if (this.phase === 'playing') this.stepPlaying(raw)
     else if (this.phase === 'dying') this.stepDying(raw * 0.55)
     this.visuals(raw)
-    this.renderer.render(this.scene, this.camera)
+    if (this.post) {
+      const sn = Math.max(0, Math.min(1, (this.speed - BASE_SPEED) / (MAX_SPEED - BASE_SPEED)))
+      this.post.render(raw, this.time, sn, this.surge > 0 || this.boost > 0)
+    } else this.renderer.render(this.scene, this.camera)
+  }
+
+  private createPost(): void {
+    const w = Math.max(1, this.host.clientWidth)
+    const h = Math.max(1, this.host.clientHeight)
+    try {
+      this.post = new PostFX(this.renderer, this.scene, this.camera, w, h, this.pixelRatio, (window.devicePixelRatio || 1) < 2)
+    } catch {
+      this.post = null // fall back to a plain render if the GPU cannot run the HDR pipeline
+    }
+  }
+
+  private applyPixelRatio(): void {
+    this.renderer.setPixelRatio(this.pixelRatio)
+    this.post?.resize(Math.max(1, this.host.clientWidth), Math.max(1, this.host.clientHeight), this.pixelRatio)
   }
 
   private monitorFps(dt: number): void {
@@ -317,9 +378,21 @@ export class Engine {
     const fps = this.fpsFrames / this.fpsTime
     this.fpsFrames = 0
     this.fpsTime = 0
-    if (this.phase === 'playing' && fps < 42 && this.pixelRatio > 1) {
-      this.pixelRatio = Math.max(1, this.pixelRatio - 0.25)
-      this.renderer.setPixelRatio(this.pixelRatio)
+    if (this.phase === 'playing' && fps < 42) {
+      // shed cost in order of least visible: resolution, bloom, shadows, then the whole HDR pipeline
+      if (this.pixelRatio > 1) {
+        this.pixelRatio = Math.max(1, this.pixelRatio - 0.25)
+        this.applyPixelRatio()
+      } else if (this.bloomOn && this.post) {
+        this.bloomOn = false
+        this.post.setBloom(false)
+      } else if (this.shadowsOn) {
+        this.shadowsOn = false
+        this.dirLight.castShadow = false
+      } else if (this.post) {
+        this.post.dispose()
+        this.post = null
+      }
     }
   }
 
@@ -352,6 +425,7 @@ export class Engine {
         if (this.y <= 0) {
           this.y = 0
           this.vy = 0
+          this.atmos.emit(this.x, 0.1, this.z, live.accent, 6, 2.5)
           if (this.overGap) {
             this.overGap = false
             this.closeCall('Gap cleared', this.x, 0.5, this.z)
@@ -380,6 +454,7 @@ export class Engine {
     // timers
     this.invuln = Math.max(0, this.invuln - dt)
     this.surge = Math.max(0, this.surge - dt)
+    this.dodgePulse = Math.max(0, this.dodgePulse - dt * 3.2)
     if (this.chainT > 0) {
       this.chainT -= dt
       if (this.chainT <= 0) {
@@ -405,6 +480,7 @@ export class Engine {
     this.track.update(this.z, this.time, difficulty, baseSpeed)
     this.collect(dt)
     this.collide(prevZ)
+    this.updateThreat()
     if (this.phase !== 'playing') return
     this.checkDodges()
 
@@ -451,7 +527,7 @@ export class Engine {
         this.pickEnergy(c.risk, c.x, c.y, c.z)
       }
     }
-    if (taken) this.glowLight.intensity = 90
+    if (taken) this.glowLight.intensity = 14
 
     for (const p of [...this.track.powers]) {
       if (Math.abs(p.z - this.z) < 1.3 && Math.abs(p.x - this.x) < 1.2 && Math.abs(p.y - py) < 1.6) {
@@ -459,6 +535,17 @@ export class Engine {
         this.activate(p.type, p.x, p.y, p.z)
       }
     }
+  }
+
+  /** How close a hazard is ahead in the runner's lane, so the character can brace for it. */
+  private updateThreat(): void {
+    let nearest = 99
+    for (const o of this.track.obstacles) {
+      const dz = this.z - o.z
+      if (dz < 0.5 || dz > 11 || !o.active) continue
+      if (Math.abs(o.x - this.x) < o.hw + 0.5) nearest = Math.min(nearest, dz)
+    }
+    this.threat = nearest < 99 ? Math.max(0, Math.min(1, 1 - nearest / 11)) : 0
   }
 
   private gainChain(n: number): void {
@@ -483,6 +570,7 @@ export class Engine {
     this.energy += value
     this.energyScore += 10 * value * this.mult
     this.collectPulse = 1
+    this.collectSide = Math.abs(x - this.x) > 0.2 ? Math.sign(x - this.x) : -this.collectSide
     this.gainChain(value)
     // the pitch climbs with the chain so a streak is audible
     const step = Math.min(12, this.chain)
@@ -490,7 +578,7 @@ export class Engine {
       this.surge = Math.max(this.surge, 0.7)
       this.atmos.emit(x, y, z, RISK_COLOR, 16, 6)
       this.atmos.emit(x, y, z, 0xffffff, 4, 3)
-      this.glowLight.intensity = 170
+      this.glowLight.intensity = 18
       audio.play('risk', step)
       if (!this.riskHinted) {
         this.riskHinted = true
@@ -509,8 +597,10 @@ export class Engine {
     this.extraScore += 20 * this.mult
     this.collectPulse = 1
     this.stats.dodges++
+    this.dodgePulse = 1
+    this.dodgeDir = Math.sign(x - this.x) || 1
     this.atmos.emit(x, y + 0.6, z, RISK_COLOR, 18, 7)
-    this.glowLight.intensity = 130
+    this.glowLight.intensity = 16
     this.ev.onToast(this.mult > 1 ? `${label}  x${this.mult}` : label, 'energy')
     audio.play('dodge', Math.min(12, this.chain))
   }
@@ -588,6 +678,7 @@ export class Engine {
 
   private die(kind: 'hit' | 'fall'): void {
     this.dyingKind = kind
+    this.dodgePulse = this.threat = 0
     this.dyingT = 0
     this.shake = 1
     this.stats = {
@@ -632,11 +723,11 @@ export class Engine {
     fog.color.copy(live.fog)
     this.hemi.color.copy(live.ambient)
     this.hemi.groundColor.copy(live.sky)
-    this.dirLight.color.copy(live.accent2)
+    this.dirLight.color.copy(live.accent2).lerp(WHITE, 0.65)
     this.glowLight.color.copy(live.accent)
-    this.glowLight.intensity += (30 - this.glowLight.intensity) * Math.min(1, dt * 8)
-    this.dirLight.position.set(this.x - 6, 14, this.z + 6)
-    this.dirLight.target.position.set(this.x, 0, this.z - 10)
+    this.glowLight.intensity += (6 - this.glowLight.intensity) * Math.min(1, dt * 8)
+    this.dirLight.position.set(this.x - 9, 19, this.z + 9)
+    this.dirLight.target.position.set(this.x, 0, this.z - 12)
     this.glowLight.position.set(this.x, 2.4, this.z + 1.5)
 
     // winding road: horizon bends left/right and rolls with the distance travelled
@@ -663,26 +754,48 @@ export class Engine {
       boost: this.boost > 0,
       invuln: this.invuln > 0 && this.boost <= 0,
       modeTime: this.time - this.modeSince,
+      yaw: this.previewYaw(dt),
+      pop: this.popScale(),
+      speed: this.speed,
+      collectSide: this.collectSide,
+      dodge: this.dodgePulse,
+      dodgeDir: this.dodgeDir,
+      threat: this.threat,
     })
 
     this.scenery.update(this.z, this.time)
-    this.backdrop.update(this.z)
+    this.backdrop.update(this.z, this.time, this.camPos.x, this.camPos.y)
     this.atmos.update(this.phase === 'paused' ? 0 : dt, this.z, this.speed, speedNorm)
     if (this.phase === 'menu') this.track.update(this.z, this.time, 0, BASE_SPEED)
 
     this.updateCamera(dt, speedNorm)
   }
 
+  private previewYaw(dt: number): number {
+    if (this.popT < 1) this.popT = Math.min(1, this.popT + dt / 0.8)
+    if (this.phase !== 'menu') return 0
+    const ease = 1 - Math.pow(1 - this.popT, 3)
+    return (this.preview ? Math.sin(this.time * 0.9) * 0.4 : 0) + ease * Math.PI * 2
+  }
+
+  private popScale(): number {
+    return this.phase === 'menu' ? 1 + 0.14 * Math.sin(Math.PI * Math.min(1, this.popT)) : 1
+  }
+
   private cameraTargets(): { pos: THREE.Vector3; look: THREE.Vector3; rate: number } {
     const p = this.tmpA
+    if (this.phase === 'menu' && this.preview) {
+      p.set(0.5, 1.3, this.z - 5.2)
+      return { pos: p, look: new THREE.Vector3(0, 0.3, this.z), rate: 5 }
+    }
     if (this.phase === 'menu') {
       const orbit = Math.sin(this.time * 0.5) * 0.5
-      p.set(1.9 + orbit, 2.0, this.z - 4.9)
-      return { pos: p, look: new THREE.Vector3(0, 1.25, this.z), rate: 3 }
+      p.set(2.1 + orbit, 2.1, this.z - 5.4)
+      return { pos: p, look: new THREE.Vector3(0, 1.3, this.z), rate: 3 }
     }
-    const h = this.mode === 'fall' ? 4.5 : 4.5 + Math.max(0, this.y) * 0.3 - (this.slideT > 0 ? 0.4 : 0)
-    p.set(this.x * 0.6, h, this.z + 7.8 + (this.boost > 0 ? 1.2 : 0))
-    return { pos: p, look: new THREE.Vector3(this.x * 0.4, 1.7, this.z - 14), rate: this.phase === 'dying' ? 3 : 8 }
+    const h = this.mode === 'fall' ? 4.2 : 4.0 + Math.max(0, this.y) * 0.3 - (this.slideT > 0 ? 0.5 : 0)
+    p.set(this.x * 0.6, h, this.z + 7.2 + (this.boost > 0 ? 1.4 : 0))
+    return { pos: p, look: new THREE.Vector3(this.x * 0.4, 1.9, this.z - 14), rate: this.phase === 'dying' ? 3 : 8 }
   }
 
   private snapCamera(): void {
@@ -702,7 +815,12 @@ export class Engine {
       this.camera.position.x += (Math.random() - 0.5) * s
       this.camera.position.y += (Math.random() - 0.5) * s
     }
+    if (this.phase === 'playing') this.camera.position.y += Math.sin(this.time * (14 + this.speed * 0.3)) * 0.02 * speedNorm
     this.camera.lookAt(this.camLook)
+    // bank the camera slightly into lane changes
+    const rollT = this.phase === 'playing' ? -THREE.MathUtils.clamp(this.vx / 10, -1, 1) * 0.06 : 0
+    this.camRoll += (rollT - this.camRoll) * Math.min(1, dt * 8)
+    this.camera.rotateZ(this.camRoll)
     const aspect = this.camera.aspect
     const baseFov = aspect < 0.8 ? 74 : aspect < 1.2 ? 68 : 62
     const targetFov = this.phase === 'menu' ? baseFov - 14 : baseFov + speedNorm * 8 + (this.boost > 0 ? 8 : 0) + (this.surge > 0 ? 4 : 0)
@@ -717,6 +835,7 @@ export class Engine {
     const w = Math.max(1, this.host.clientWidth)
     const h = Math.max(1, this.host.clientHeight)
     this.renderer.setSize(w, h, false)
+    this.post?.resize(w, h, this.pixelRatio)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
   }

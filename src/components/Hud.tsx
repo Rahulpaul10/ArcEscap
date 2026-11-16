@@ -1,9 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Gauge, Magnet, Pause, Shield, Zap } from 'lucide-react'
+import { Gauge, Magnet, Pause, Shield } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { ToastMsg } from '@/game/useArcEscape'
 import type { HudState, PowerType } from '@/game/types'
-import { fmt } from './ui'
+import { ArcMark, fmt } from './ui'
 
 const POWER_META: Record<PowerType, { color: string; icon: ReactNode; label: string }> = {
   shield: { color: '#4da3ff', icon: <Shield size={16} />, label: 'Shield' },
@@ -77,7 +77,7 @@ export function Hud({ hud, toast, onPause, visible }: { hud: HudState; toast: To
             </div>
             <div className="flex items-center gap-2 pointer-events-auto">
               <div className="flex items-center gap-1.5 h-11 pl-3 pr-4 rounded-full glass text-[#ffc83d] font-display font-semibold tabular-nums">
-                <Zap size={17} fill="currentColor" />
+                <ArcMark size={17} />
                 {fmt(hud.energy)}
               </div>
               <button aria-label="Pause" onClick={onPause} className="h-11 w-11 grid place-items-center rounded-full glass text-[#dbe8ff] active:scale-95">

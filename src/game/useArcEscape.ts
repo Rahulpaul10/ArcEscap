@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { audio } from './audio'
 import { Engine } from './engine'
 import { applyRun, getProgress, skinById, updateProgress, useProgress, type RunOutcome } from './progress'
+import { characterById } from './characters'
 import { emptyHud, type HudState, type Phase, type RunStats } from './types'
 
 export interface ToastMsg {
@@ -44,6 +45,7 @@ export function useArcEscape() {
           setResult({ stats, outcome, prevBest: before.best, prevBestDistance: before.bestDistance })
         },
       },
+      characterById(p.character),
       skinById(p.skin),
       p.muted,
     )
@@ -55,8 +57,10 @@ export function useArcEscape() {
   }, [])
 
   useEffect(() => {
-    engineRef.current?.setSkin(skinById(progress.skin))
-  }, [progress.skin])
+    engineRef.current?.setLook(characterById(progress.character), skinById(progress.skin))
+  }, [progress.skin, progress.character])
+
+  const setPreview = useCallback((on: boolean) => engineRef.current?.setPreview(on), [])
 
   useEffect(() => {
     engineRef.current?.setMuted(progress.muted)
@@ -117,6 +121,7 @@ export function useArcEscape() {
       setResult(null)
       engineRef.current?.toMenu()
     },
+    setPreview,
     pause: () => engineRef.current?.pause(),
     resume: () => engineRef.current?.resume(),
     click,

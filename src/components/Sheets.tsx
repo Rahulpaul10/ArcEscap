@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { MILESTONE_STEP } from '@/game/config'
 import { ACHIEVEMENTS, SKINS, buyOrSelectSkin, dailyView, type Achievement, type Progress } from '@/game/progress'
 import { audio } from '@/game/audio'
-import { Sheet, fmt } from './ui'
+import { ArcMark, Sheet, fmt } from './ui'
 
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`
 
@@ -35,9 +35,9 @@ export function SkinsSheet({ open, onClose, progress }: { open: boolean; onClose
     }
   }
   return (
-    <Sheet open={open} title="Runner skins" onClose={onClose}>
+    <Sheet open={open} title="Colorways" onClose={onClose}>
       <div className="flex items-center gap-2 mb-4 text-[#ffc83d] font-display font-semibold">
-        <Zap size={16} fill="currentColor" />
+        <ArcMark size={16} />
         <span className="tabular-nums">{fmt(progress.bank)}</span>
         <span className="text-[13px] font-normal text-[#8fa6cc]">Arc Energy banked</span>
       </div>
@@ -69,7 +69,7 @@ export function SkinsSheet({ open, onClose, progress }: { open: boolean; onClose
                 ) : (
                   <span className={`flex items-center gap-1 tabular-nums ${progress.bank >= s.cost ? 'text-[#ffc83d]' : 'text-[#8fa6cc]'}`}>
                     <Lock size={12} />
-                    <Zap size={12} fill="currentColor" />
+                    <ArcMark size={12} />
                     {fmt(s.cost)}
                   </span>
                 )}
@@ -113,7 +113,7 @@ export function ProgressSheet({ open, onClose, progress }: { open: boolean; onCl
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8fa6cc]">Today's challenge</span>
             <span className="flex items-center gap-1 text-[#ffc83d] text-[13px] font-semibold tabular-nums">
-              <Zap size={13} fill="currentColor" />+{daily.def.reward}
+              <ArcMark size={13} />+{daily.def.reward}
             </span>
           </div>
           <p className="mt-2 font-display text-[19px] font-semibold tracking-tight text-balance">{daily.def.label}</p>

@@ -1,9 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Award, CalendarCheck, ChevronDown, ChevronLeft, ChevronUp, Home, Play, RotateCcw, Trophy, Volume2, VolumeX, Zap } from 'lucide-react'
+import { Award, CalendarCheck, ChevronDown, ChevronLeft, ChevronUp, Home, Play, RotateCcw, Trophy, Volume2, VolumeX } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { RunResult } from '@/game/useArcEscape'
 import type { Progress } from '@/game/progress'
-import { Btn, CountUp, Label, fmt } from './ui'
+import { ArcMark, Btn, CountUp, Label, fmt } from './ui'
 
 export function Tutorial({ open, onConfirm, onClose }: { open: boolean; onConfirm: () => void; onClose: () => void }) {
   const items: { icon: ReactNode; title: string; hint: string; anim: { x?: number[]; y?: number[] } }[] = [
@@ -43,7 +43,7 @@ export function Tutorial({ open, onConfirm, onClose }: { open: boolean; onConfir
               ))}
               <div className="flex items-center gap-4 rounded-2xl bg-white/5 p-3">
                 <div className="h-12 w-12 shrink-0 grid place-items-center rounded-xl bg-[#ffc83d]/15 text-[#ffc83d]">
-                  <Zap size={22} fill="currentColor" />
+                  <ArcMark size={22} />
                 </div>
                 <div>
                   <div className="font-display font-semibold text-[15px]">Dodge toward Energy</div>
@@ -109,7 +109,7 @@ export function GameOver({ open, result, progress, onRestart, onMenu }: { open: 
             </div>
             <div className="grid grid-cols-3 gap-2 mt-4">
               <Cell label="Distance" value={<><CountUp value={result.stats.distance} delay={150} /> m</>} />
-              <Cell label="Energy" value={<><CountUp value={result.stats.energy} delay={250} /></>} tone="#ffc83d" icon={<Zap size={13} fill="currentColor" />} />
+              <Cell label="Energy" value={<><CountUp value={result.stats.energy} delay={250} /></>} tone="#ffc83d" icon={<ArcMark size={13} />} />
               <Cell label="Best" value={fmt(Math.max(progress.best, result.stats.score))} />
             </div>
 
