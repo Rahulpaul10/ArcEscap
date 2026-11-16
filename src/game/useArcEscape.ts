@@ -36,6 +36,10 @@ export function useArcEscape() {
     const engine = new Engine(
       host,
       {
+        getLook: () => {
+          const sel = getProgress()
+          return { character: characterById(sel.character), skin: skinById(sel.skin) }
+        },
         onPhase: setPhase,
         onHud: setHud,
         onToast: (text, tone) => setToast({ id: ++toastId.current, text, tone }),
@@ -45,8 +49,6 @@ export function useArcEscape() {
           setResult({ stats, outcome, prevBest: before.best, prevBestDistance: before.bestDistance })
         },
       },
-      characterById(p.character),
-      skinById(p.skin),
       p.muted,
     )
     engineRef.current = engine
@@ -55,10 +57,6 @@ export function useArcEscape() {
       engineRef.current = null
     }
   }, [])
-
-  useEffect(() => {
-    engineRef.current?.setLook(characterById(progress.character), skinById(progress.skin))
-  }, [progress.skin, progress.character])
 
   const setPreview = useCallback((on: boolean) => engineRef.current?.setPreview(on), [])
 

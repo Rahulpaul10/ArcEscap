@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { CHARACTERS } from './characters'
 import { mulberry32, MILESTONE_STEP } from './config'
 import type { RunStats } from './types'
 
@@ -138,9 +139,11 @@ function load(): Progress {
     const raw = localStorage.getItem(KEY)
     if (!raw) return base
     const parsed = JSON.parse(raw) as Partial<Progress>
+    const known = CHARACTERS.some((c) => c.id === parsed.character)
     return {
       ...base,
       ...parsed,
+      character: known ? (parsed.character as string) : base.character,
       totals: { ...base.totals, ...(parsed.totals ?? {}) },
       daily: { ...base.daily, ...(parsed.daily ?? {}) },
       skins: Array.isArray(parsed.skins) && parsed.skins.length ? parsed.skins : base.skins,
@@ -267,6 +270,7 @@ export function buyOrSelectSkin(id: string): 'selected' | 'bought' | 'poor' {
 }
 
 export function selectCharacter(id: string): void {
+  if (!CHARACTERS.some((c) => c.id === id)) return
   updateProgress((p) => {
     p.character = id
   })

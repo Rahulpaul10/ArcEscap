@@ -8,8 +8,6 @@ const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`
 
 interface Props {
   open: boolean
-  /** 'beforeRun' is shown the first time you press Run */
-  mode: 'menu' | 'beforeRun'
   selectedId: string
   onPick: (id: string) => void
   onConfirm: () => void
@@ -35,7 +33,7 @@ function Swatch({ c, size = 44 }: { c: Character; size?: number }) {
   )
 }
 
-export function CharacterSelect({ open, mode, selectedId, onPick, onConfirm, onClose }: Props) {
+export function CharacterSelect({ open, selectedId, onPick, onConfirm, onClose }: Props) {
   const [filter, setFilter] = useState<'all' | 'female' | 'male'>('all')
   const current = characterById(selectedId)
   const list = CHARACTERS.filter((c) => filter === 'all' || c.gender === filter)
@@ -147,7 +145,7 @@ export function CharacterSelect({ open, mode, selectedId, onPick, onConfirm, onC
                 {list.map((c) => {
                   const active = c.id === selectedId
                   return (
-                    <button key={c.id} id={`chip-${c.id}`} onClick={() => onPick(c.id)} aria-label={`Select ${c.name}`} aria-pressed={active} className="relative snap-center shrink-0 flex flex-col items-center gap-1 px-1.5 py-1.5 rounded-2xl active:scale-95 transition-transform">
+                    <button key={c.id} id={`chip-${c.id}`} onClick={() => (active ? onConfirm() : onPick(c.id))} aria-label={`Select ${c.name}`} aria-pressed={active} className="relative snap-center shrink-0 flex flex-col items-center gap-1 px-1.5 py-1.5 rounded-2xl active:scale-95 transition-transform">
                       {active && <motion.span layoutId="char-ring" className="absolute inset-0 rounded-2xl bg-white/10 ring-1 ring-[#acc6e9]" transition={{ type: 'spring', damping: 24, stiffness: 340 }} />}
                       <motion.span className="relative" animate={{ scale: active ? 1.12 : 1, y: active ? -2 : 0 }} transition={{ type: 'spring', stiffness: 380, damping: 20 }}>
                         <Swatch c={c} />
@@ -159,14 +157,9 @@ export function CharacterSelect({ open, mode, selectedId, onPick, onConfirm, onC
               </div>
 
               <Btn variant="primary" className="w-full mt-3" onClick={onConfirm}>
-                {mode === 'beforeRun' ? (
-                  <>
-                    <Play size={18} fill="currentColor" /> Run as {current.name}
-                  </>
-                ) : (
-                  'Confirm'
-                )}
+                <Play size={18} fill="currentColor" /> Run as {current.name}
               </Btn>
+              <p className="mt-2 text-center text-[11px] text-[#8fa6cc]">Tap a runner to preview, tap it again to start running</p>
             </div>
           </motion.div>
         </motion.div>

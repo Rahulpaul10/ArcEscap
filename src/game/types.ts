@@ -30,7 +30,12 @@ export interface RunStats {
   milestones: number
 }
 
+import type { Character } from './characters'
+import type { Skin } from './progress'
+
 export interface EngineEvents {
+  /** Single source of truth for who is running: the saved selection, read live (never cached by the engine). */
+  getLook: () => { character: Character; skin: Skin }
   onPhase: (phase: Phase) => void
   onHud: (hud: HudState) => void
   onToast: (text: string, tone: 'energy' | 'power' | 'info' | 'danger') => void

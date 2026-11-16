@@ -8,8 +8,8 @@ import { makeEnvironment } from './env'
 import { Input } from './input'
 import { PostFX } from './post'
 import { applyTheme, bendUniform } from './materials'
-import { getProgress, type Skin } from './progress'
-import { lookFor, type Character } from './characters'
+import { getProgress } from './progress'
+import { CHARACTERS, lookFor } from './characters'
 import { Runner, type RunnerMode } from './runner'
 import { Atmosphere, Backdrop, Scenery } from './scenery'
 import { Track } from './track'
@@ -98,6 +98,8 @@ export class Engine {
   private tmpA = new THREE.Vector3()
   private fov = 66
   private preview = false
+  private runnerFaults = 0
+  private appliedLook = ''
   private post: PostFX | null = null
   private bloomOn = true
   private shadowsOn = true
@@ -108,8 +110,6 @@ export class Engine {
   constructor(
     private host: HTMLElement,
     private ev: EngineEvents,
-    character: Character,
-    skin: Skin,
     muted: boolean,
   ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: (window.devicePixelRatio || 1) < 2, powerPreference: 'high-performance' })
@@ -138,7 +138,7 @@ export class Engine {
     this.dirLight.shadow.normalBias = 0.03
     this.scene.add(this.hemi, this.dirLight, this.glowLight, this.track.root, this.scenery.root, this.backdrop.root, this.atmos.root, this.runner.root, this.dirLight.target)
     this.dirLight.position.set(-6, 14, 6)
-    this.runner.setLook(character, lookFor(character, skin))
+    this.syncLook(false)
     audio.setMuted(muted)
 
     this.input = new Input(host, (a) => this.handleAction(a))
@@ -158,10 +158,17 @@ export class Engine {
     return this.phase
   }
 
-  /** Change character and/or colorway. Plays a short pop + spin so the swap reads clearly. */
-  setLook(character: Character, skin: Skin): void {
+  /**
+   * Reconcile the model on screen with the selection in the saved progress. Runs every frame and before every
+   * run, so the runner is always the selected character, independent of any UI event or render timing.
+   */
+  private syncLook(pop: boolean): void {
+    const { character, skin } = this.ev.getLook()
+    const key = `${character.id}|${skin.id}`
+    if (key === this.appliedLook) return
+    this.appliedLook = key
     this.runner.setLook(character, lookFor(character, skin))
-    if (this.phase === 'menu') this.popT = 0
+    if (pop && this.phase === 'menu') this.popT = 0
   }
 
   /** Character-select mode: closer turntable camera. */
@@ -174,8 +181,12 @@ export class Engine {
     audio.setMuted(m)
   }
 
+  /** Begin a run with the character that is selected right now. */
   start(): void {
     audio.unlock()
+    this.syncLook(false)
+    this.preview = false
+    this.popT = 1
     this.prepare()
     this.runTime = 0
     this.setPhase('playing')
@@ -183,6 +194,7 @@ export class Engine {
   }
 
   toMenu(): void {
+    this.syncLook(false)
     this.prepare()
     audio.stopMusic()
     this.setPhase('menu')
@@ -346,6 +358,7 @@ export class Engine {
     const raw = Math.min(0.05, Math.max(0.001, (now - this.last) / 1000))
     this.last = now
     this.time += raw
+    this.syncLook(true)
     this.monitorFps(raw)
     if (this.phase === 'playing') this.stepPlaying(raw)
     else if (this.phase === 'dying') this.stepDying(raw * 0.55)
@@ -744,7 +757,8 @@ export class Engine {
       this.setMode(mode)
     } else if (this.phase === 'menu') this.setMode('idle')
     this.runner.root.position.set(this.x, this.y, this.z)
-    this.runner.update(dt, {
+    try {
+      this.runner.update(dt, {
       mode: this.mode,
       speedNorm,
       vx: this.vx,
@@ -762,6 +776,17 @@ export class Engine {
       dodgeDir: this.dodgeDir,
       threat: this.threat,
     })
+    } catch (err) {
+      // never let a character animation fault stop the run: reset the rig, and after repeated faults fall back to the default runner
+      this.runnerFaults++
+      if (this.runnerFaults <= 3) console.warn('Runner animation fault, recovering', err)
+      this.runner.resetState()
+      if (this.runnerFaults >= 3) {
+        this.runnerFaults = 0
+        const d = CHARACTERS[0]
+        this.runner.setLook(d, d.palette)
+      }
+    }
 
     this.scenery.update(this.z, this.time)
     this.backdrop.update(this.z, this.time, this.camPos.x, this.camPos.y)

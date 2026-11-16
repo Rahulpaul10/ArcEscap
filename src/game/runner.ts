@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { ARC_MARK_PATH } from './arcMark'
 import { buildHand, headGeometry, limbGeometry, torsoFront, torsoGeometry, type Hand } from './bodyparts'
-import type { Character, Mood, Palette } from './characters'
+import { CHARACTERS, type Character, type Mood, type Palette } from './characters'
 import { OUTFIT_TRAITS, buildAccessory, buildHair, buildOutfit, buildPack, type Ctx, type Part, type V3 } from './cosmetics'
 import { Face, type Expression, type MoodCfg } from './face'
 import { bend, geo } from './materials'
@@ -278,9 +278,44 @@ export class Runner {
     p.m.position.set(x, y, z)
   }
 
-  /** Apply a character's build, hair, outfit and colours (colorways recolor the outfit only). */
+  /**
+   * Apply a character's build, hair, outfit and colours (colorways recolor the outfit only).
+   * Never throws: if a character fails to build, the default runner is used so the game keeps running.
+   */
   setLook(c: Character, p: Palette): void {
-    if (this.current !== c.id) this.rebuild(c)
+    try {
+      this.applyLook(c, p)
+    } catch (err) {
+      console.warn(`Runner "${c.id}" failed to load, using the default runner`, err)
+      this.current = null
+      const d = CHARACTERS[0]
+      try {
+        this.applyLook(d, d.palette)
+      } catch (err2) {
+        console.warn('Default runner failed to load', err2)
+      }
+    }
+  }
+
+  /** Clear animation state so a runner can resume from a clean pose (after a fault or a character swap). */
+  resetState(): void {
+    for (const k of Object.keys(this.w) as (keyof typeof this.w)[]) this.w[k] = k === 'idle' ? 1 : 0
+    this.springs.clear()
+    this.lat = 0
+    this.landT = 0
+    this.launchT = 0
+    this.peakFall = 0
+    this.kick = 0
+    this.prevBy = 0.95
+    this.prevMode = 'idle'
+    this.sm = { eL: 0, eR: 0, hx: 0, hy: 0 }
+  }
+
+  private applyLook(c: Character, p: Palette): void {
+    if (this.current !== c.id) {
+      this.rebuild(c)
+      this.resetState()
+    }
     this.cur = c
     this.suit.color.setHex(p.suit)
     this.trim.color.setHex(p.trim)
@@ -426,6 +461,7 @@ export class Runner {
   /** Damped spring toward a target angle: gives hair and cloth lag, overshoot and settle. */
   private follow(g: THREE.Group, tx: number, ta: number, axis: 'y' | 'z', k: number, c: number, dt: number): void {
     let s = this.springs.get(g)
+    if (s && !(Number.isFinite(s.x) && Number.isFinite(s.a))) s = undefined
     if (!s) {
       s = { x: tx, vx: 0, a: ta, va: 0 }
       this.springs.set(g, s)
@@ -494,6 +530,13 @@ export class Runner {
       if (wt < 0.002) continue
       const src = this.poses[m]
       for (const key of keys) P[key] += src[key] * wt
+    }
+
+    // fallback: if any channel ever goes non-finite, use the idle pose instead of freezing the character
+    if (keys.some((key) => !Number.isFinite(P[key])) || Object.values(this.w).some((v) => !Number.isFinite(v))) {
+      this.resetState()
+      poseIdle(this.poses.idle, t)
+      for (const key of keys) P[key] = this.poses.idle[key]
     }
 
     // --- takeoff / landing impulses

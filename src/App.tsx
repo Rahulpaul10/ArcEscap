@@ -18,9 +18,8 @@ export default function App() {
   const confirm = () => {
     g.click()
     confirmCharacter()
-    const wasBeforeRun = select === 'beforeRun'
     setSelect(null)
-    if (wasBeforeRun) g.play()
+    g.play() // selecting a runner starts the run straight away with that runner
   }
   const open = (s: 'skins' | 'progress') => {
     g.click()
@@ -47,7 +46,6 @@ export default function App() {
 
       <CharacterSelect
         open={select !== null && g.phase === 'menu'}
-        mode={select === 'beforeRun' ? 'beforeRun' : 'menu'}
         selectedId={g.progress.character}
         onPick={selectCharacter}
         onConfirm={confirm}
